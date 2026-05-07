@@ -1,9 +1,6 @@
 // ====================== CONFIGURATION ======================
 const PLAYLIST_URL = 'https://iptv-org.github.io/iptv/index.m3u';
-const PROXY_URLS = [
-  'https://corsproxy.io/?',
-  'https://api.allorigins.win/raw?url=',
-];
+const PROXY_URLS = ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='];
 
 // ====================== GLOBALS ======================
 let allChannels = [];
@@ -12,29 +9,31 @@ let currentPage = 1;
 const pageSize = 40;
 let activeCategory = '';
 let activeLanguage = '';
-let pingStatusMap = new Map();         // url -> {status, checking}
-let availableChannelsSet = new Set();   // urls that are confirmed available
+let pingStatusMap = new Map();
+let availableChannelsSet = new Set();
 let favorites = JSON.parse(localStorage.getItem('streamtv_favs') || '[]');
 let scanningActive = false;
-let scanAbortController = null;
 
-// DOM elements
+// DOM helpers
 const $ = (id) => document.getElementById(id);
 const homeView = $('homeView');
 const availableView = $('availableView');
 const searchView = $('searchView');
 const profileView = $('profileView');
+
 const featuredCategories = $('featuredCategories');
 const availableCategories = $('availableCategories');
 const scanBtn = $('scanBtn');
 const stopScanBtn = $('stopScanBtn');
 const scanProgress = $('scanProgress');
+
 const searchBox = $('searchBox');
 const categoryPills = $('categoryPills');
 const languagePills = $('languagePills');
 const channelGrid = $('channelGrid');
 const paginationDiv = $('pagination');
 const statusText = $('statusText');
+
 const playerModal = $('playerModal');
 const videoPlayer = $('videoPlayer');
 const channelTitle = $('channelTitle');
@@ -47,22 +46,22 @@ const durationSpan = $('duration');
 const volumeSlider = $('volumeSlider');
 const fullscreenBtn = $('fullscreenBtn');
 const qualityBtn = $('qualityBtn');
-const closePlayerBtn = $('closePlayer');
+const closePlayerBtn = $('closePlayerBtn');
 const themeToggle = $('themeToggle');
 
 let hls = null;
 let currentQualityIndex = -1;
 
 // ====================== THEME ======================
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem('streamtv_theme', theme);
-  themeToggle.innerHTML = theme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('streamtv_theme', t);
+  themeToggle.innerHTML = t === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
 }
 applyTheme(localStorage.getItem('streamtv_theme') || 'dark');
 themeToggle.addEventListener('click', () => {
-  const current = document.documentElement.getAttribute('data-theme');
-  applyTheme(current === 'dark' ? 'light' : 'dark');
+  const cur = document.documentElement.getAttribute('data-theme');
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
 });
 
 // ====================== NAVIGATION ======================
@@ -71,28 +70,25 @@ function showView(viewId) {
   document.getElementById(viewId + 'View').classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector(`[data-view="${viewId}"]`).classList.add('active');
-
   if (viewId === 'search') applyFilters();
   if (viewId === 'profile') renderFavorites();
   if (viewId === 'available') {
-    // if scan not done and not running, prompt
     if (availableChannelsSet.size === 0 && !scanningActive) {
-      availableCategories.innerHTML = '<p style="text-align:center;padding:2rem;">Click "Scan" to find live channels.</p>';
+      availableCategories.innerHTML = '<p style="text-align:center">Click "Scan" to find live channels.</p>';
     } else {
       buildAvailableRows();
     }
   }
 }
-
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => showView(btn.dataset.view));
 });
 
-// ====================== DATA FETCHING ======================
+// ====================== DATA ======================
 async function fetchPlaylistText() {
-  try { const resp = await fetch(PLAYLIST_URL); if (resp.ok) return await resp.text(); } catch(e) {}
-  for (const proxy of PROXY_URLS) {
-    try { const resp = await fetch(proxy + encodeURIComponent(PLAYLIST_URL)); if (resp.ok) return await resp.text(); } catch(e) {}
+  try { const r = await fetch(PLAYLIST_URL); if (r.ok) return await r.text(); } catch (e) {}
+  for (const p of PROXY_URLS) {
+    try { const r = await fetch(p + encodeURIComponent(PLAYLIST_URL)); if (r.ok) return await r.text(); } catch (e) {}
   }
   throw new Error('All fetch methods failed.');
 }
@@ -113,9 +109,7 @@ function parseM3U(text) {
       const ga = (attr) => { const m = meta.match(new RegExp(`${attr}="([^"]*)"`)); return m ? m[1] : ''; };
       current = {
         displayName: name,
-        tvgId: ga('tvg-id'),
-        tvgName: ga('tvg-name'),
-        tvgLogo: ga('tvg-logo'),
+        tvgId: ga('tvg-id'), tvgName: ga('tvg-name'), tvgLogo: ga('tvg-logo'),
         groupTitle: ga('group-title'),
         language: extractLanguage(ga('tvg-language') || ga('group-title') || ''),
       };
@@ -130,9 +124,9 @@ function parseM3U(text) {
 }
 
 function extractLanguage(raw) {
-  raw = raw.toLowerCase();
-  const lmap = {'english':'English','french':'French','spanish':'Spanish','german':'German','italian':'Italian','portuguese':'Portuguese','russian':'Russian','arabic':'Arabic','hindi':'Hindi','turkish':'Turkish','dutch':'Dutch','polish':'Polish','indonesian':'Indonesian','thai':'Thai','vietnamese':'Vietnamese'};
-  for (const [k,v] of Object.entries(lmap)) if (raw.includes(k)) return v;
+  const map = {english:'English',french:'French',spanish:'Spanish',german:'German',italian:'Italian',portuguese:'Portuguese',russian:'Russian',arabic:'Arabic',hindi:'Hindi',turkish:'Turkish'};
+  const rawLower = raw.toLowerCase();
+  for (const [k,v] of Object.entries(map)) if (rawLower.includes(k)) return v;
   return '';
 }
 
@@ -143,13 +137,13 @@ async function loadChannels() {
     allChannels = parseM3U(text);
     statusText.textContent = `${allChannels.length} channels ready`;
     buildHomeRows();
-    setupFilters();
+    setupSearchFilters();
   } catch (e) {
     statusText.textContent = 'Error: ' + e.message;
   }
 }
 
-// ====================== CATEGORIES & LANGUAGES ======================
+// ====================== CATEGORIES ======================
 const CATEGORY_MAP = {
   'Sports': ['sports','sport'],
   'Movies': ['movies','movie','film'],
@@ -159,22 +153,12 @@ const CATEGORY_MAP = {
   'Documentary': ['documentary','docu'],
   'Religion': ['religion','religious','faith'],
 };
-
-function getChannelsByCategory(cat, source = allChannels) {
+function getChannelsByCategory(cat, src = allChannels) {
   const keys = CATEGORY_MAP[cat] || [cat.toLowerCase()];
-  return source.filter(ch => {
-    const g = (ch.groupTitle || '').toLowerCase();
-    return keys.some(k => g.includes(k));
-  });
+  return src.filter(ch => keys.some(k => (ch.groupTitle||'').toLowerCase().includes(k)));
 }
 
-function getUniqueLanguages() {
-  const set = new Set();
-  allChannels.forEach(ch => { if (ch.language) set.add(ch.language); });
-  return [...set].sort();
-}
-
-// ====================== CHANNEL CARD (same as before) ======================
+// ====================== CARD BUILDER ======================
 function createChannelCard(channel) {
   const card = document.createElement('div');
   card.className = 'channel-card glass';
@@ -187,18 +171,19 @@ function createChannelCard(channel) {
       <div class="card-name">${channel.displayName || 'Unknown'}</div>
       <div class="card-meta">
         <span class="ping-status"></span>
-        <button class="fav-btn ${isFav?'liked':''}" data-url="${channel.url}"><i class="fas fa-heart"></i></button>
-        <button class="ping-btn" data-url="${channel.url}"><i class="fas fa-sync-alt"></i></button>
+        <button class="fav-btn ${isFav?'liked':''}"><i class="fas fa-heart"></i></button>
+        <button class="ping-btn"><i class="fas fa-sync-alt"></i></button>
       </div>
     </div>
   `;
   card.addEventListener('click', (e) => {
     if (e.target.closest('button')) return;
-    openPlayer(channel);
+    playChannel(channel);
   });
   card.querySelector('.fav-btn').addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleFavorite(channel.url, card.querySelector('.fav-btn'));
+    const btn = e.target.closest('button');
+    toggleFavorite(channel.url, btn);
   });
   card.querySelector('.ping-btn').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -207,7 +192,6 @@ function createChannelCard(channel) {
   return card;
 }
 
-// ====================== FAVORITES ======================
 function toggleFavorite(url, btn) {
   if (favorites.includes(url)) {
     favorites = favorites.filter(u => u !== url);
@@ -220,7 +204,7 @@ function toggleFavorite(url, btn) {
 }
 function renderFavorites() {
   const list = $('favList');
-  if (favorites.length === 0) { list.innerHTML = '<p>No favorites yet.</p>'; return; }
+  if (!favorites.length) { list.innerHTML = '<p>No favorites yet.</p>'; return; }
   list.innerHTML = '';
   favorites.forEach(url => {
     const ch = allChannels.find(c => c.url === url);
@@ -228,64 +212,53 @@ function renderFavorites() {
       const chip = document.createElement('span');
       chip.className = 'fav-chip';
       chip.textContent = ch.displayName;
-      chip.addEventListener('click', () => openPlayer(ch));
+      chip.addEventListener('click', () => playChannel(ch));
       list.appendChild(chip);
     }
   });
 }
 
-// ====================== PING (enhanced with callback) ======================
-function updatePing(el, status) {
+// ====================== PING ======================
+async function pingChannel(url, el) {
   if (!el) return;
-  el.innerHTML = status === 'available' ? '<span class="status-available">✔</span>' : '<span class="status-unavailable">✘</span>';
-}
-
-async function pingChannel(url, el, callback) {
-  if (!url) return;
-  // if we already have a cached result, use it
   if (pingStatusMap.has(url) && !pingStatusMap.get(url).checking) {
-    const status = pingStatusMap.get(url).status;
-    if (el) updatePing(el, status);
-    if (callback) callback(url, status);
+    el.innerHTML = pingStatusMap.get(url).status === 'available' ? '<span class="status-available">✔</span>' : '<span class="status-unavailable">✘</span>';
     return;
   }
-  pingStatusMap.set(url, { checking: true, status: null });
-  if (el) el.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
+  el.innerHTML = '<i class="fas fa-spinner fa-pulse"></i>';
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const resp = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), { method:'HEAD', signal:controller.signal });
-    clearTimeout(timeout);
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 4000);
+    const resp = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), { method: 'HEAD', signal: ctrl.signal });
     const ok = resp.ok;
     pingStatusMap.set(url, { checking: false, status: ok ? 'available' : 'unavailable' });
-    if (el) updatePing(el, ok ? 'available' : 'unavailable');
-    if (callback) callback(url, ok ? 'available' : 'unavailable');
+    el.innerHTML = ok ? '<span class="status-available">✔</span>' : '<span class="status-unavailable">✘</span>';
+    return ok ? 'available' : 'unavailable';
   } catch (e) {
     pingStatusMap.set(url, { checking: false, status: 'unavailable' });
-    if (el) updatePing(el, 'unavailable');
-    if (callback) callback(url, 'unavailable');
+    el.innerHTML = '<span class="status-unavailable">✘</span>';
+    return 'unavailable';
   }
 }
 
 // ====================== HOME ROWS ======================
 function buildHomeRows() {
   featuredCategories.innerHTML = '';
-  const cats = ['News','Sports','Movies','Music','Kids','Documentary','Religion'];
-  cats.forEach(cat => {
+  ['News','Sports','Movies','Music','Kids','Documentary','Religion'].forEach(cat => {
     const chs = getChannelsByCategory(cat);
     if (!chs.length) return;
-    const section = document.createElement('div');
-    section.className = 'category-section';
-    section.innerHTML = `<div class="category-header"><i class="fas fa-tv"></i> ${cat}</div>`;
+    const sec = document.createElement('div');
+    sec.className = 'category-section';
+    sec.innerHTML = `<div class="category-header"><i class="fas fa-tv"></i> ${cat}</div>`;
     const row = document.createElement('div');
     row.className = 'scroll-row';
     chs.slice(0, 35).forEach(ch => row.appendChild(createChannelCard(ch)));
-    section.appendChild(row);
-    featuredCategories.appendChild(section);
+    sec.appendChild(row);
+    featuredCategories.appendChild(sec);
   });
 }
 
-// ====================== AVAILABLE SCANNING ======================
+// ====================== AVAILABLE SCAN ======================
 async function startScan() {
   if (scanningActive) return;
   scanningActive = true;
@@ -293,178 +266,130 @@ async function startScan() {
   stopScanBtn.style.display = 'inline-flex';
   availableChannelsSet.clear();
   availableCategories.innerHTML = '';
-  scanProgress.textContent = 'Starting scan...';
-
-  const MAX_SCAN = 1000; // limit to first 1000 channels (you can increase)
-  const channelsToScan = allChannels.slice(0, MAX_SCAN);
-  let scanned = 0;
-  let found = 0;
-  const BATCH_SIZE = 5; // concurrent pings
-  let index = 0;
-
-  const updateProgress = () => {
-    scanProgress.textContent = `Scanned ${scanned}/${channelsToScan.length} – Found ${found} live`;
-  };
-
-  const processBatch = async () => {
-    while (index < channelsToScan.length && scanningActive) {
-      const batch = channelsToScan.slice(index, index + BATCH_SIZE);
-      index += BATCH_SIZE;
-      const promises = batch.map(ch => {
-        return new Promise(resolve => {
-          pingChannel(ch.url, null, (url, status) => {
-            scanned++;
-            if (status === 'available') {
-              found++;
-              availableChannelsSet.add(url);
-              // Add card to the appropriate category row
-              addToAvailableRow(ch);
-            }
-            resolve();
-          });
-        });
-      });
-      await Promise.all(promises);
-      updateProgress();
-      // small delay to avoid overwhelming
-      await new Promise(r => setTimeout(r, 100));
-    }
-    // finish
-    scanningActive = false;
-    scanBtn.style.display = 'inline-flex';
-    stopScanBtn.style.display = 'none';
-    updateProgress();
-    if (availableChannelsSet.size === 0) {
-      availableCategories.innerHTML = '<p style="text-align:center;">No available channels found right now.</p>';
-    }
-  };
-
-  processBatch();
-}
-
-function stopScan() {
+  const toScan = allChannels.slice(0, 1000);
+  let scanned = 0, found = 0;
+  const update = () => { scanProgress.textContent = `Scanned ${scanned}/${toScan.length} – ${found} live`; };
+  update();
+  for (let i = 0; i < toScan.length; i += 5) {
+    if (!scanningActive) break;
+    const batch = toScan.slice(i, i+5);
+    await Promise.all(batch.map(async ch => {
+      if (!scanningActive) return;
+      const status = await pingChannel(ch.url, null);
+      scanned++;
+      if (status === 'available') {
+        found++;
+        availableChannelsSet.add(ch.url);
+        addToAvailableRow(ch);
+      }
+      update();
+    }));
+  }
   scanningActive = false;
+  scanBtn.style.display = 'inline-flex';
+  stopScanBtn.style.display = 'none';
+  if (availableChannelsSet.size === 0) availableCategories.innerHTML = '<p>No live channels found.</p>';
 }
-
+function stopScan() { scanningActive = false; }
 scanBtn.addEventListener('click', startScan);
 stopScanBtn.addEventListener('click', stopScan);
 
-// Dynamically add card to the right category row
 function addToAvailableRow(channel) {
-  // Determine category
-  let cat = null;
-  for (const [catName, keys] of Object.entries(CATEGORY_MAP)) {
-    const g = (channel.groupTitle || '').toLowerCase();
-    if (keys.some(k => g.includes(k))) { cat = catName; break; }
+  let cat = 'Other';
+  for (const [cName, keys] of Object.entries(CATEGORY_MAP)) {
+    if (keys.some(k => (channel.groupTitle||'').toLowerCase().includes(k))) { cat = cName; break; }
   }
-  if (!cat) cat = 'Other';
-
-  let section = availableCategories.querySelector(`[data-category="${cat}"]`);
-  if (!section) {
-    section = document.createElement('div');
-    section.className = 'category-section';
-    section.dataset.category = cat;
-    section.innerHTML = `<div class="category-header"><i class="fas fa-tv"></i> ${cat}</div>`;
-    const row = document.createElement('div');
-    row.className = 'scroll-row';
-    section.appendChild(row);
-    availableCategories.appendChild(section);
+  let sec = availableCategories.querySelector(`[data-cat="${cat}"]`);
+  if (!sec) {
+    sec = document.createElement('div');
+    sec.className = 'category-section';
+    sec.dataset.cat = cat;
+    sec.innerHTML = `<div class="category-header"><i class="fas fa-tv"></i> ${cat}</div><div class="scroll-row"></div>`;
+    availableCategories.appendChild(sec);
   }
-  const row = section.querySelector('.scroll-row');
-  // Avoid duplicates
-  if (row.querySelector(`[data-url="${channel.url}"]`)) return;
-  const card = createChannelCard(channel);
-  card.dataset.url = channel.url;
-  row.appendChild(card);
+  const row = sec.querySelector('.scroll-row');
+  if (!row.querySelector(`[data-url="${channel.url}"]`)) {
+    const card = createChannelCard(channel);
+    card.dataset.url = channel.url;
+    row.appendChild(card);
+  }
 }
-
 function buildAvailableRows() {
-  // Rebuild entire available view from the set
   availableCategories.innerHTML = '';
-  const availableChannels = allChannels.filter(ch => availableChannelsSet.has(ch.url));
-  const cats = ['News','Sports','Movies','Music','Kids','Documentary','Religion'];
-  cats.forEach(cat => {
-    const chs = getChannelsByCategory(cat, availableChannels);
+  const availChs = allChannels.filter(ch => availableChannelsSet.has(ch.url));
+  if (!availChs.length) { availableCategories.innerHTML = '<p>No available channels yet.</p>'; return; }
+  ['News','Sports','Movies','Music','Kids','Documentary','Religion'].forEach(cat => {
+    const chs = getChannelsByCategory(cat, availChs);
     if (!chs.length) return;
-    const section = document.createElement('div');
-    section.className = 'category-section';
-    section.innerHTML = `<div class="category-header"><i class="fas fa-tv"></i> ${cat}</div>`;
-    const row = document.createElement('div');
-    row.className = 'scroll-row';
+    const sec = document.createElement('div');
+    sec.className = 'category-section';
+    sec.innerHTML = `<div class="category-header"><i class="fas fa-tv"></i> ${cat}</div><div class="scroll-row"></div>`;
+    const row = sec.querySelector('.scroll-row');
     chs.forEach(ch => row.appendChild(createChannelCard(ch)));
-    section.appendChild(row);
-    availableCategories.appendChild(section);
+    availableCategories.appendChild(sec);
   });
-  if (availableChannelsSet.size === 0) {
-    availableCategories.innerHTML = '<p style="text-align:center;">No available channels yet. Start a scan.</p>';
-  }
 }
 
-// ====================== FILTERS (Search) ======================
-function setupFilters() {
+// ====================== SEARCH FILTERS ======================
+function setupSearchFilters() {
   categoryPills.innerHTML = '';
-  const allCatBtn = document.createElement('button');
-  allCatBtn.className = 'pill active'; allCatBtn.textContent = 'All';
-  allCatBtn.addEventListener('click', () => { activeCategory=''; currentPage=1; applyFilters(); });
-  categoryPills.appendChild(allCatBtn);
+  const allCat = document.createElement('button'); allCat.className='pill active'; allCat.textContent='All';
+  allCat.addEventListener('click', ()=>{ activeCategory=''; currentPage=1; applyFilters(); setActivePill(allCat); });
+  categoryPills.appendChild(allCat);
   ['Sports','Movies','Kids','Music','News','Documentary','Religion'].forEach(cat => {
-    const btn = document.createElement('button');
-    btn.className = 'pill'; btn.textContent = cat;
-    btn.addEventListener('click', () => { activeCategory=cat; currentPage=1; applyFilters(); });
+    const btn = document.createElement('button'); btn.className='pill'; btn.textContent=cat;
+    btn.addEventListener('click', ()=>{ activeCategory=cat; currentPage=1; applyFilters(); setActivePill(btn); });
     categoryPills.appendChild(btn);
   });
-
   languagePills.innerHTML = '';
-  const allLangBtn = document.createElement('button');
-  allLangBtn.className = 'pill active'; allLangBtn.textContent = 'All';
-  allLangBtn.addEventListener('click', () => { activeLanguage=''; currentPage=1; applyFilters(); });
-  languagePills.appendChild(allLangBtn);
-  getUniqueLanguages().forEach(lang => {
-    const btn = document.createElement('button');
-    btn.className = 'pill'; btn.textContent = lang;
-    btn.addEventListener('click', () => { activeLanguage=lang; currentPage=1; applyFilters(); });
+  const allLang = document.createElement('button'); allLang.className='pill active'; allLang.textContent='All';
+  allLang.addEventListener('click', ()=>{ activeLanguage=''; currentPage=1; applyFilters(); setActivePill(allLang); });
+  languagePills.appendChild(allLang);
+  const langs = [...new Set(allChannels.map(ch=>ch.language).filter(Boolean))].sort();
+  langs.forEach(lang => {
+    const btn = document.createElement('button'); btn.className='pill'; btn.textContent=lang;
+    btn.addEventListener('click', ()=>{ activeLanguage=lang; currentPage=1; applyFilters(); setActivePill(btn); });
     languagePills.appendChild(btn);
   });
-
-  searchBox.addEventListener('input', () => { currentPage=1; applyFilters(); });
+  searchBox.addEventListener('input', ()=>{ currentPage=1; applyFilters(); });
 }
-
+function setActivePill(active) {
+  active.parentElement.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  active.classList.add('active');
+}
 function applyFilters() {
   const q = searchBox.value.toLowerCase();
   filteredChannels = allChannels.filter(ch => {
     if (q && !ch.displayName.toLowerCase().includes(q)) return false;
     if (activeCategory) {
-      const keys = CATEGORY_MAP[activeCategory] || [activeCategory.toLowerCase()];
-      const g = (ch.groupTitle || '').toLowerCase();
-      if (!keys.some(k => g.includes(k))) return false;
+      const keys = CATEGORY_MAP[activeCategory] || [];
+      if (!keys.some(k => (ch.groupTitle||'').toLowerCase().includes(k))) return false;
     }
     if (activeLanguage && ch.language !== activeLanguage) return false;
     return true;
   });
   renderSearchGrid();
 }
-
 function renderSearchGrid() {
   if (!searchView.classList.contains('active')) return;
-  const totalPages = Math.ceil(filteredChannels.length / pageSize);
-  if (currentPage > totalPages) currentPage = totalPages || 1;
+  const total = Math.ceil(filteredChannels.length / pageSize);
+  if (currentPage > total) currentPage = total || 1;
   const start = (currentPage-1)*pageSize;
-  const pageChannels = filteredChannels.slice(start, start+pageSize);
+  const pageChs = filteredChannels.slice(start, start+pageSize);
   channelGrid.innerHTML = '';
-  pageChannels.forEach(ch => channelGrid.appendChild(createChannelCard(ch)));
+  pageChs.forEach(ch => channelGrid.appendChild(createChannelCard(ch)));
   paginationDiv.innerHTML = '';
-  if (totalPages > 1) {
+  if (total > 1) {
     const prev = document.createElement('button'); prev.textContent='Previous'; prev.disabled=currentPage===1;
     prev.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; renderSearchGrid(); } });
-    const next = document.createElement('button'); next.textContent='Next'; next.disabled=currentPage===totalPages;
-    next.addEventListener('click', ()=>{ if(currentPage<totalPages){ currentPage++; renderSearchGrid(); } });
-    const info = document.createElement('span'); info.textContent = `Page ${currentPage}/${totalPages}`;
-    paginationDiv.append(prev, info, next);
+    const next = document.createElement('button'); next.textContent='Next'; next.disabled=currentPage===total;
+    next.addEventListener('click', ()=>{ if(currentPage<total){ currentPage++; renderSearchGrid(); } });
+    paginationDiv.append(prev, ` ${currentPage}/${total} `, next);
   }
 }
 
-// ====================== VLC PLAYER (unchanged) ======================
-function openPlayer(channel) {
+// ====================== PLAYER ======================
+function playChannel(channel) {
   channelTitle.textContent = channel.displayName;
   playerModal.classList.add('active');
   if (Hls.isSupported()) {
@@ -474,7 +399,7 @@ function openPlayer(channel) {
     hls.attachMedia(videoPlayer);
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       videoPlayer.play();
-      qualityLevelsSetup();
+      qualitySetup();
     });
     hls.on(Hls.Events.ERROR, (event, data) => {
       if (data.fatal) {
@@ -487,14 +412,69 @@ function openPlayer(channel) {
     videoPlayer.src = channel.url;
     videoPlayer.play();
   } else {
-    alert('HLS playback not supported.');
+    alert('HLS not supported.');
   }
   bindPlayerControls();
 }
-function qualityLevelsSetup() { /* same as before, unchanged */ }
-function closePlayer() { /* same */ }
-function bindPlayerControls() { /* same */ }
-// (Include the existing player functions exactly as before – I'm omitting them here for brevity, but keep them from previous version)
+function qualitySetup() {
+  if (!hls || !hls.levels.length) { qualityBtn.style.display='none'; return; }
+  qualityBtn.style.display = 'inline-block';
+  qualityBtn.textContent = 'Auto';
+  currentQualityIndex = -1;
+  qualityBtn.onclick = () => {
+    if (currentQualityIndex === -1) {
+      const hd = hls.levels.length-1;
+      hls.currentLevel = hd; currentQualityIndex = hd; qualityBtn.textContent = 'HD';
+    } else if (currentQualityIndex === hls.levels.length-1) {
+      hls.currentLevel = 0; currentQualityIndex = 0; qualityBtn.textContent = 'SD';
+    } else {
+      hls.currentLevel = -1; currentQualityIndex = -1; qualityBtn.textContent = 'Auto';
+    }
+  };
+}
+function closePlayer() {
+  playerModal.classList.remove('active');
+  if (hls) { hls.destroy(); hls = null; }
+  videoPlayer.pause();
+  videoPlayer.removeAttribute('src');
+  videoPlayer.load();
+}
+closePlayerBtn.addEventListener('click', closePlayer);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePlayer(); });
+
+function bindPlayerControls() {
+  playPauseBtn.onclick = () => videoPlayer.paused ? videoPlayer.play() : videoPlayer.pause();
+  videoPlayer.onplay = () => playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+  videoPlayer.onpause = () => playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+  videoPlayer.ontimeupdate = () => {
+    const pct = (videoPlayer.currentTime / videoPlayer.duration) * 100 || 0;
+    progressFill.style.width = pct + '%';
+    progressThumb.style.left = pct + '%';
+    currentTimeSpan.textContent = fmt(videoPlayer.currentTime);
+  };
+  videoPlayer.ondurationchange = () => { durationSpan.textContent = fmt(videoPlayer.duration); };
+  progressBar.addEventListener('click', (e) => {
+    const rect = progressBar.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    videoPlayer.currentTime = ratio * videoPlayer.duration;
+  });
+  volumeSlider.oninput = () => videoPlayer.volume = volumeSlider.value;
+  fullscreenBtn.onclick = () => {
+    if (!document.fullscreenElement) {
+      if (videoPlayer.requestFullscreen) videoPlayer.requestFullscreen();
+      else if (videoPlayer.webkitRequestFullscreen) videoPlayer.webkitRequestFullscreen();
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{});
+    } else {
+      document.exitFullscreen();
+      if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    }
+  };
+}
+function fmt(s) {
+  if (isNaN(s)) return '0:00';
+  const m = Math.floor(s/60), sec = Math.floor(s%60).toString().padStart(2,'0');
+  return `${m}:${sec}`;
+}
 
 // ====================== INIT ======================
 loadChannels();
